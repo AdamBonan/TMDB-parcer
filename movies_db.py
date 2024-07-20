@@ -48,7 +48,7 @@ class Database:
 
         # Add main data
         cursor.execute('''
-            INSERT OR IGNORE INTO movies (
+            INSERT OR REPLACE INTO movies (
                 tmdb_id,
                 tmdb_poster_path,
                 genre_id,
@@ -76,7 +76,7 @@ class Database:
 
         # Add main data
         cursor.execute('''
-            INSERT OR IGNORE INTO tv_shows (
+            INSERT OR REPLACE INTO tv_shows (
                 tmdb_id,
                 tmdb_poster_path,
                 genre_id,
