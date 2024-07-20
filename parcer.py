@@ -60,145 +60,79 @@ def get_tv_ids(year: int, genre_ids: str = None, total_pages: int = 0) -> list[i
     return tv_ids
 
 
-def main():
-
-    # Argparce
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("release_date", type=int, help="The release date of the movie")
-    parser.add_argument("-g", "--genre", type=str, help="The genre of the movie, Default = None", default=None, metavar="")
-    parser.add_argument("-n", "--name", type=str, help="Name database, Default = movie", default="movie", metavar="")
-
-    args = parser.parse_args()
-    year = args.release_date
-    name_db = args.name
-    genre_ids = args.genre
+def main(year, name_db, genre_ids):
 
     # Database
-    genre_movie_list = tmdb.genres_movie_list().get("genres")
-    genre_tv_list = tmdb.genres_movie_list(tv=True).get("genres")
-    genre_configurations = genre_movie_list + genre_tv_list
-    db = Database(name_db, genre_configurations)
+    db = Database(name_db)
 
+    # Base configuration image
     configuration_image = tmdb.configuration_details().get("images")
-    movie_ids = get_movie_ids(year, genre_ids, total_pages=1)
-    tv_ids = get_tv_ids(year, genre_ids, total_pages=1)
+    base_url_image = configuration_image.get("base_url", "http://image.tmdb.org/t/p/")
+    base_poster_size = configuration_image.get("poster_sizes", "original")[-1]
+
+    movie_ids = get_movie_ids(year, genre_ids)
+    tv_ids = get_tv_ids(year, genre_ids)
 
     # Movie id to data to database
-    print(len(movie_ids))
-    n = 0
     for movie_id in movie_ids:
-        n += 1
-        print(n)
-        append_to_response = ['title', 'genres', 'poster_path', 'overview', 'release_date', 'production_countries','production_companies', 'releases', 'tagline', 'runtime']
+        # Get movie data
+        append_to_response = ['title', 'genres', 'poster_path', 'release_date', 'releases']
         movie_data = tmdb.details_movie(movie_id, append_to_response=",".join(append_to_response))
 
         # Get poster url
-        base_url = configuration_image.get("base_url", "http://image.tmdb.org/t/p/")
-        poster_size = configuration_image.get("poster_sizes", "original")[-1]
         poster_path = movie_data.get("poster_path", "")
-        movie_data["poster_path"] = f"{base_url}{poster_size}{poster_path}"
+        movie_data["poster_path"] = f"{base_url_image}{base_poster_size}{poster_path}"
 
-        # Get certification US
-        certification = None
-        for country in movie_data.get("releases").get("countries"):
-            if country.get("iso_3166_1") == "US":
-                certification = country.get("certification")
-                break
-        movie_data["certification"] = certification
+        # Get genre_id
+        if not movie_data.get("genres", []):
+            movie_data["genre_id"] = None
+        else:
+            movie_data["genre_id"] = movie_data.get("genres")[0].get("id", None)
 
-        # Get country of original
-        element = movie_data.get("origin_country")[0] if 0 <= 0 < len(movie_data.get("origin_country")) else None
-        movie_data["origin_country"] = element
-
-        # Cast, Director, Producer, Writer
-        credit = tmdb.movie_credits(movie_id)
-
-        producers, writers, directors = [], [], []
-        for crew in credit.get("crew"):
-            job = crew.get("job")
-
-            # Director
-            if job == "Director":
-                directors.append(crew)
-            # Producers
-            elif job == "Producer" or job == "Associate Producer" or job == "Executive Producer":
-                producers.append(crew)
-            # Writer
-            elif job == "Writer" or job == "Novel" or job =="Screenplay":
-                writers.append(crew)
-
-        movie_data["credits"] = {
-            "cast": credit.get("cast")[:10],
-            "crew": {
-                "director": directors,
-                "producers": producers,
-                "writers": writers
-            }
-        }
+        # Get production_company
+        details_movie = tmdb.details_movie(movie_id)
+        if not details_movie.get("production_companies", []):
+            movie_data["production_company"] = None
+        else:
+            movie_data["production_company"] = details_movie.get("production_companies")[0].get("name", None)
 
         db.add_movie_data(movie_data)
 
     # Tv id to data
     for tv_id in tv_ids:
-        append_to_response = ['title', 'genres', 'poster_path', 'overview', 'release_date', 'production_countries', 'production_companies', 'tagline', 'runtime']
+        # Get tv data
+        append_to_response = ['title', 'genres', 'poster_path', 'release_date', 'production_companies']
         tv_data = tmdb.details_movie(tv_id, tv=True, append_to_response=",".join(append_to_response))
 
         # Get poster url
-        base_url = configuration_image.get("base_url", "http://image.tmdb.org/t/p/")
-        poster_size = configuration_image.get("poster_sizes", "original")[-1]
         poster_path = tv_data.get("poster_path", "")
-        tv_data["poster_path"] = f"{base_url}{poster_size}{poster_path}"
+        tv_data["poster_path"] = f"{base_url_image}{base_poster_size}{poster_path}"
 
-        # Get certification US
-        content_rating = tmdb.content_rating(tv_id)
-        certification = None
-        for country in content_rating.get("results"):
-            if country.get("iso_3166_1") == "US":
-                certification = country.get("rating")
-                break
-        tv_data["certification"] = certification
+        # Get genre_id
+        if not tv_data.get("genres", []):
+            tv_data["genre_id"] = None
+        else:
+            tv_data["genre_id"] = tv_data.get("genres")[0].get("id", None)
 
-        # Get country of original
-        element = tv_data.get("origin_country")[0] if 0 <= 0 < len(tv_data.get("origin_country")) else None
-        tv_data["origin_country"] = element
+        # Get production_company, number_of_seasons, number_of_episodes
+        details_tv = tmdb.details_movie(tv_id, tv=True)
 
-        # Cast, Director, Producer, Writer
-        credit = tmdb.movie_credits(tv_id, tv=True)
+        if not details_tv.get("production_companies", []):
+            tv_data["production_company"] = None
+        else:
+            tv_data["production_company"] = details_tv.get("production_companies")[0].get("name")
 
-        producers, writers, directors = [], [], []
-        for crew in credit.get("crew"):
-            job = crew.get("job")
-
-            # Director
-            if job == "Director":
-                directors.append(crew)
-            # Producers
-            elif job == "Producer" or job == "Associate Producer" or job == "Executive Producer":
-                producers.append(crew)
-            # Writer
-            elif job == "Writer" or job == "Novel" or job == "Screenplay":
-                writers.append(crew)
-
-        tv_data["credits"] = {
-            "cast": credit.get("cast")[:10],
-            "crew": {
-                "director": directors,
-                "producers": producers,
-                "writers": writers
-            }
-        }
-
-        # Add episodes in season
-        for season in tv_data.get("seasons"):
-            season_number = season.get("season_number")
-            episodes = tmdb.tv_series_details(tv_id, season_number).get("episodes")
-            season["episodes"] = episodes
+        tv_data["number_of_seasons"] = details_tv.get("number_of_seasons", None)
+        tv_data["number_of_episodes"] = details_tv.get("number_of_episodes", None)
 
         db.add_tv_data(tv_data)
-        n += 1
-        print(n)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("release_date", type=int, help="The release date of the movie")
+    parser.add_argument("-g", "--genre", type=str, help="The genre of the movie, Default = None", default=None, metavar="")
+    parser.add_argument("-n", "--name", type=str, help="Name database, Default = movie", default="movie", metavar="")
+    args = parser.parse_args()
+
+    main(args.release_date, args.name, args.genre)
